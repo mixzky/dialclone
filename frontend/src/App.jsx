@@ -10,10 +10,15 @@ function App() {
   const [socket, setSocket] = useState(null);
   const [roomState, setRoomState] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [activeRooms, setActiveRooms] = useState([]);
 
   useEffect(() => {
     const newSocket = io(SERVER_URL);
     setSocket(newSocket);
+
+    newSocket.on('active_rooms', (rooms) => {
+      setActiveRooms(rooms);
+    });
 
     newSocket.on('room_state_update', (state) => {
       console.log('Room State Updated:', state);
@@ -33,7 +38,7 @@ function App() {
   if (!roomState) {
     return (
       <div className="container text-center">
-        <Lobby onJoin={handleJoinRoom} />
+        <Lobby onJoin={handleJoinRoom} activeRooms={activeRooms} />
       </div>
     );
   }

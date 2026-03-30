@@ -1,5 +1,35 @@
 import React, { useState, useEffect, useRef } from 'react';
 
+// --- Custom Animated Number ---
+const easeOutQuart = (t) => 1 - Math.pow(1 - t, 4);
+
+const AnimatedNumber = ({ targetValue, duration = 1500 }) => {
+  const [value, setValue] = useState(0);
+
+  useEffect(() => {
+    let startTimestamp = null;
+    let animationFrameId;
+
+    const step = (timestamp) => {
+      if (!startTimestamp) startTimestamp = timestamp;
+      const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+      
+      const easedProgress = easeOutQuart(progress);
+      setValue(easedProgress * targetValue);
+
+      if (progress < 1) {
+        animationFrameId = requestAnimationFrame(step);
+      }
+    };
+
+    animationFrameId = requestAnimationFrame(step);
+
+    return () => cancelAnimationFrame(animationFrameId);
+  }, [targetValue, duration]);
+
+  return <>{Number(value).toFixed(2)}</>;
+};
+
 // --- Custom Vertical Slider ---
 const VerticalSlider = ({ value, max, onChange, background }) => {
   const containerRef = useRef(null);
@@ -205,6 +235,11 @@ function GameRoom({ socket, roomState, currentUser }) {
           {roomState.round}/{roomState.maxRounds}
         </div>
 
+        <div style={{ position: 'absolute', top: '32px', right: '32px', textAlign: 'right', zIndex: 10 }}>
+          <div className="timer-large" style={{ fontSize: '2rem' }}>{timer}</div>
+          <div className="timer-sub" style={{ fontSize: '0.8rem' }}>Seconds to guess</div>
+        </div>
+
         <div style={{ display: 'flex', width: '25%', minWidth: '120px', height: '100%', borderRight: '1px solid rgba(0,0,0,0.1)' }}>
           <VerticalSlider 
             value={h} max={360} background={hueBkg}
@@ -250,6 +285,11 @@ function GameRoom({ socket, roomState, currentUser }) {
       <div className="game-card" style={{ flexDirection: 'column' }}>
         <RoundCounter color={topTc} />
         
+        <div style={{ position: 'absolute', top: '32px', right: '32px', textAlign: 'right', zIndex: 10, color: topTc }}>
+          <div className="timer-large" style={{ fontSize: '2rem' }}>{timer}</div>
+          <div className="timer-sub" style={{ fontSize: '0.8rem' }}>Next phase</div>
+        </div>
+
         {/* Top Half: Selection */}
         <div className="result-half result-top" style={{ backgroundColor: topBg, color: topTc }}>
           <div className="hsl-readout top" style={{ color: topTc }}>
@@ -257,7 +297,7 @@ function GameRoom({ socket, roomState, currentUser }) {
             H{myGuess.h} S{myGuess.s} L{myGuess.l}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginTop: 'auto' }}>
-            <div className="score-large">{Number(score).toFixed(2)}</div>
+            <div className="score-large">{myPlayer?.latestPoints ? <AnimatedNumber targetValue={myPlayer.latestPoints} /> : '0.00'}</div>
             <div className="sassy-remark" style={{ opacity: 0.8 }}>You're skating on the thin ice of adequacy.</div>
           </div>
         </div>
@@ -282,24 +322,39 @@ function GameRoom({ socket, roomState, currentUser }) {
     );
   };
 
+  const handlePlayAgain = () => {
+    socket.emit('play_again', { roomId: roomState.roomId });
+  };
+
   const renderEndGame = () => {
     const sortedPlayers = [...roomState.players].sort((a, b) => b.score - a.score);
     const winner = sortedPlayers[0];
 
     return (
       <div className="game-card" style={{ backgroundColor: '#000', color: '#fff' }}>
-        <div className="centered-text">
-          <div className="score-large">Winner</div>
-          <div className="ready-text" style={{ color: 'var(--accent-color)' }}>{winner?.name}</div>
+        <div className="centered-text w-100" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div style={{ fontSize: '1rem', letterSpacing: '2px', opacity: 0.6, marginBottom: '16px' }}>MATCH COMPLETE</div>
+          <h2 style={{ fontSize: '3rem', fontWeight: 800, marginBottom: '24px' }}>
+            {winner?.name} <span style={{ opacity: 0.5, fontWeight: 400 }}>Wins</span>
+          </h2>
+          <div className="score-large" style={{ marginBottom: '48px', color: '#10b981' }}>{Number(winner?.score).toFixed(2)} <span style={{fontSize:'1.5rem', opacity:0.7}}>/ 50.00 pts</span></div>
+          
+          {isHost ? (
+            <button 
+              onClick={handlePlayAgain}
+              style={{
+                width: '100%', maxWidth: '300px', padding: '16px', borderRadius: '12px', border: 'none', 
+                backgroundColor: '#fff', color: '#000',
+                fontSize: '1.2rem', fontWeight: 800, cursor: 'pointer',
+                transition: 'all 0.2s'
+              }}
+            >
+              Play Again
+            </button>
+          ) : (
+            <div style={{ opacity: 0.6 }}>Waiting for host to restart...</div>
+          )}
         </div>
-        
-        {isHost && (
-          <button className="btn-floating" onClick={handleStartGame} style={{ bottom: '32px', right: '32px' }}>
-             <svg viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.3"/>
-            </svg>
-          </button>
-        )}
       </div>
     );
   };

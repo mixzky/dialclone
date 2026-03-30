@@ -64,6 +64,18 @@ function emitRoomState(roomId) {
   }
 }
 
+function getActiveRooms() {
+  return Object.values(rooms).map(r => ({
+    roomId: r.roomId,
+    playerCount: Object.keys(r.players).length,
+    state: r.state
+  }));
+}
+
+function emitActiveRooms() {
+  io.emit('active_rooms', getActiveRooms());
+}
+
 function getPublicRoomState(roomId) {
   const room = rooms[roomId];
   if (!room) return null;
@@ -74,6 +86,7 @@ function getPublicRoomState(roomId) {
       id: p.id,
       name: p.name,
       score: p.score,
+      latestPoints: p.latestPoints || 0,
       isReady: p.isReady,
       hasGuessed: !!p.currentGuess,
       lastGuess: (room.state === 'ROUND_RESULT' || room.state === 'END_GAME') ? p.currentGuess : null
@@ -180,6 +193,7 @@ function endGame(roomId) {
 
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
+  socket.emit('active_rooms', getActiveRooms());
 
   socket.on('join_room', ({ roomId, username }) => {
     socket.join(roomId);
@@ -203,11 +217,13 @@ io.on('connection', (socket) => {
       id: socket.id,
       name: username || `Player_${socket.id.substring(0, 4)}`,
       score: 0,
+      latestPoints: 0,
       isReady: isHost,
       currentGuess: null
     };
 
     emitRoomState(roomId);
+    emitActiveRooms();
   });
 
   socket.on('toggle_ready', ({ roomId }) => {
@@ -235,8 +251,10 @@ io.on('connection', (socket) => {
       room.round = 1;
       for(let pId in room.players) {
         room.players[pId].score = 0;
+        room.players[pId].latestPoints = 0;
       }
       startMemorizePhase(roomId);
+      emitActiveRooms();
     }
   });
 
@@ -247,6 +265,7 @@ io.on('connection', (socket) => {
       if (!p.currentGuess) {
         p.currentGuess = { h, s, l };
         const pts = calculateScore(room.targetColor, p.currentGuess);
+        p.latestPoints = pts;
         p.score += pts;
         
         emitRoomState(roomId);
@@ -255,6 +274,23 @@ io.on('connection', (socket) => {
           startResultPhase(roomId);
         }
       }
+    }
+  });
+
+  socket.on('play_again', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (room && room.host === socket.id && room.state === 'END_GAME') {
+      room.state = 'LOBBY';
+      room.round = 1;
+      room.targetColor = null;
+      for(let pId in room.players) {
+        room.players[pId].score = 0;
+        room.players[pId].latestPoints = 0;
+        room.players[pId].currentGuess = null;
+        room.players[pId].isReady = (pId === room.host);
+      }
+      emitRoomState(roomId);
+      emitActiveRooms();
     }
   });
 
@@ -274,6 +310,7 @@ io.on('connection', (socket) => {
         }
       }
     }
+    emitActiveRooms();
   });
 });
 

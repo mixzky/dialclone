@@ -74,6 +74,7 @@ function getPublicRoomState(roomId) {
       id: p.id,
       name: p.name,
       score: p.score,
+      isReady: p.isReady,
       hasGuessed: !!p.currentGuess,
       lastGuess: (room.state === 'ROUND_RESULT' || room.state === 'END_GAME') ? p.currentGuess : null
     })),
@@ -158,15 +159,6 @@ function startResultPhase(roomId) {
   
   room.state = 'ROUND_RESULT';
   
-  // Calculate Scores
-  for(let pId in room.players){
-    const p = room.players[pId];
-    if (p.currentGuess) {
-      const pts = calculateScore(room.targetColor, p.currentGuess);
-      p.score += pts;
-    }
-  }
-
   emitRoomState(roomId);
 
   startTimer(roomId, 'ROUND_RESULT', GAME_SETTINGS.RESULT_TIME, () => {
@@ -206,19 +198,40 @@ io.on('connection', (socket) => {
       };
     }
 
+    const isHost = rooms[roomId].host === socket.id;
     rooms[roomId].players[socket.id] = {
       id: socket.id,
       name: username || `Player_${socket.id.substring(0, 4)}`,
       score: 0,
+      isReady: isHost,
       currentGuess: null
     };
 
     emitRoomState(roomId);
   });
 
+  socket.on('toggle_ready', ({ roomId }) => {
+    const room = rooms[roomId];
+    if (room && room.state === 'LOBBY' && room.players[socket.id]) {
+      if (room.host !== socket.id) {
+        room.players[socket.id].isReady = !room.players[socket.id].isReady;
+        emitRoomState(roomId);
+      }
+    }
+  });
+
   socket.on('start_game', ({ roomId }) => {
     const room = rooms[roomId];
     if (room && room.host === socket.id && room.state === 'LOBBY') {
+      const allPlayers = Object.values(room.players);
+      
+      // Enforce at least 2 players (Host + 1)
+      if (allPlayers.length < 2) return;
+      
+      // Enforce everyone is ready
+      const allReady = allPlayers.every(p => p.isReady);
+      if (!allReady) return;
+
       room.round = 1;
       for(let pId in room.players) {
         room.players[pId].score = 0;
@@ -230,11 +243,17 @@ io.on('connection', (socket) => {
   socket.on('submit_guess', ({ roomId, h, s, l }) => {
     const room = rooms[roomId];
     if (room && room.state === 'GUESS' && room.players[socket.id]) {
-      room.players[socket.id].currentGuess = { h, s, l };
-      emitRoomState(roomId);
+      const p = room.players[socket.id];
+      if (!p.currentGuess) {
+        p.currentGuess = { h, s, l };
+        const pts = calculateScore(room.targetColor, p.currentGuess);
+        p.score += pts;
+        
+        emitRoomState(roomId);
 
-      if (checkAllGuessed(roomId)) {
-        startResultPhase(roomId);
+        if (checkAllGuessed(roomId)) {
+          startResultPhase(roomId);
+        }
       }
     }
   });

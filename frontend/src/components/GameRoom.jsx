@@ -103,14 +103,71 @@ function GameRoom({ socket, roomState, currentUser }) {
 
   // ---------------- Render States ----------------
 
-  const renderLobby = () => (
-    <div className="game-card" style={{ backgroundColor: '#000', color: '#fff', cursor: isHost ? 'pointer' : 'default' }} onClick={handleStartGame}>
-      <RoundCounter color="#ffffff" />
-      <div className="centered-text">
-        <div className="ready-text">{isHost ? 'ready' : 'waiting'}</div>
+  const handleToggleReady = () => {
+    socket.emit('toggle_ready', { roomId: roomState.roomId });
+  };
+
+  const renderLobby = () => {
+    const myPlayer = roomState.players.find(p => p.id === socket.id);
+    const isReady = myPlayer?.isReady;
+    
+    // Check start conditions
+    const nonHostPlayers = roomState.players.filter(p => p.id !== roomState.host);
+    const allOthersReady = nonHostPlayers.length > 0 && nonHostPlayers.every(p => p.isReady);
+    const canStart = roomState.players.length > 1 && allOthersReady;
+
+    return (
+      <div className="game-card" style={{ backgroundColor: '#000', color: '#fff' }}>
+        <RoundCounter color="#ffffff" />
+        
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '64px 32px 32px 32px' }}>
+          <h2 style={{ fontSize: '2rem', fontWeight: 800, marginBottom: '24px' }}>Lobby</h2>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto' }}>
+            {roomState.players.map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: 'rgba(255,255,255,0.1)', padding: '12px 16px', borderRadius: '8px' }}>
+                <span style={{ fontWeight: 600 }}>{p.name} {p.id === roomState.host ? '(Host)' : ''}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '0.8rem', opacity: 0.7 }}>{p.id === roomState.host ? 'Ready' : (p.isReady ? 'Ready' : 'Waiting')}</span>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: (p.id === roomState.host || p.isReady) ? '#10b981' : '#4b5563' }} />
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '24px', textAlign: 'center' }}>
+            {isHost ? (
+               <button 
+                 onClick={canStart ? handleStartGame : null}
+                 style={{
+                   width: '100%', padding: '16px', borderRadius: '12px', border: 'none', 
+                   backgroundColor: canStart ? '#fff' : '#333', 
+                   color: canStart ? '#000' : '#888',
+                   fontSize: '1.2rem', fontWeight: 800, cursor: canStart ? 'pointer' : 'not-allowed',
+                   transition: 'all 0.2s'
+                 }}
+               >
+                 {canStart ? 'Start Game' : 'Waiting for Players...'}
+               </button>
+            ) : (
+               <button 
+                 onClick={handleToggleReady}
+                 style={{
+                   width: '100%', padding: '16px', borderRadius: '12px', border: 'none', 
+                   backgroundColor: isReady ? '#10b981' : '#fff', 
+                   color: isReady ? '#fff' : '#000',
+                   fontSize: '1.2rem', fontWeight: 800, cursor: 'pointer',
+                   transition: 'all 0.2s'
+                 }}
+               >
+                 {isReady ? 'Unready' : 'Click to Ready Up'}
+               </button>
+            )}
+          </div>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderMemorize = () => {
     const bg = getColorString(roomState.targetColor);

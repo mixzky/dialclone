@@ -63,7 +63,7 @@ function generateColor() {
  */
 function calculateScore(target, guess) {
   if (!guess) return 0;
-  
+
   // Normalized differences (0 to 1)
   let dh = Math.abs(target.h - guess.h) / 180;
   if (dh > 1) dh = 2 - dh; // Shortest path around the circle
@@ -73,11 +73,11 @@ function calculateScore(target, guess) {
 
   // Maximum possible distance in this space is sqrt(1^2 + 1^2 + 1^2) = sqrt(3) ~ 1.732
   const maxDist = Math.sqrt(3);
-  const dist = Math.sqrt(dh*dh + ds*ds + dl*dl);
-  
+  const dist = Math.sqrt(dh * dh + ds * ds + dl * dl);
+
   const percentage = 1 - (dist / maxDist);
   // Curve the score to make it more rewarding for close guesses
-  const score = Math.max(0, Math.pow(percentage, 2) * 10); 
+  const score = Math.max(0, Math.pow(percentage, 2) * 10);
   return parseFloat(score.toFixed(2));
 }
 
@@ -128,7 +128,7 @@ function getPublicRoomState(roomId) {
 function startTimer(roomId, currentPhase, durationSec, onEnd) {
   const room = rooms[roomId];
   if (!room) return;
-  
+
   if (room.timer) clearInterval(room.timer);
   room.timeRemaining = durationSec;
 
@@ -147,16 +147,16 @@ function startTimer(roomId, currentPhase, durationSec, onEnd) {
 
 function startMemorizePhase(roomId) {
   const room = rooms[roomId];
-  if(!room) return;
+  if (!room) return;
 
   room.state = 'MEMORIZE';
   room.targetColor = generateColor();
-  
+
   // Clear previous guesses
-  for(let pId in room.players) {
+  for (let pId in room.players) {
     room.players[pId].currentGuess = null;
   }
-  
+
   emitRoomState(roomId);
 
   startTimer(roomId, 'MEMORIZE', GAME_SETTINGS.MEMORIZE_TIME, () => {
@@ -166,7 +166,7 @@ function startMemorizePhase(roomId) {
 
 function startGuessPhase(roomId) {
   const room = rooms[roomId];
-  if(!room) return;
+  if (!room) return;
 
   room.state = 'GUESS';
   emitRoomState(roomId);
@@ -178,8 +178,8 @@ function startGuessPhase(roomId) {
 
 function checkAllGuessed(roomId) {
   const room = rooms[roomId];
-  if(!room) return false;
-  
+  if (!room) return false;
+
   let allGuessed = Object.values(room.players).length > 0;
   for (let p of Object.values(room.players)) {
     if (!p.currentGuess) {
@@ -192,7 +192,7 @@ function checkAllGuessed(roomId) {
 
 function startResultPhase(roomId) {
   const room = rooms[roomId];
-  if(!room) return;
+  if (!room) return;
 
   if (room.timer) clearInterval(room.timer);
 
@@ -208,7 +208,7 @@ function startResultPhase(roomId) {
   }
 
   room.state = 'ROUND_RESULT';
-  
+
   emitRoomState(roomId);
 
   startTimer(roomId, 'ROUND_RESULT', GAME_SETTINGS.RESULT_TIME, () => {
@@ -223,7 +223,7 @@ function startResultPhase(roomId) {
 
 function endGame(roomId) {
   const room = rooms[roomId];
-  if(!room) return;
+  if (!room) return;
   room.state = 'END_GAME';
   emitRoomState(roomId);
 }
@@ -283,16 +283,16 @@ io.on('connection', (socket) => {
     const room = rooms[roomId];
     if (room && room.host === socket.id && room.state === 'LOBBY') {
       const allPlayers = Object.values(room.players);
-      
+
       // Enforce at least 2 players (Host + 1)
       if (allPlayers.length < 2) return;
-      
+
       // Enforce everyone is ready
       const allReady = allPlayers.every(p => p.isReady);
       if (!allReady) return;
 
       room.round = 1;
-      for(let pId in room.players) {
+      for (let pId in room.players) {
         room.players[pId].score = 0;
         room.players[pId].latestPoints = 0;
         room.players[pId].roundHistory = [];
@@ -328,7 +328,7 @@ io.on('connection', (socket) => {
       room.state = 'LOBBY';
       room.round = 1;
       room.targetColor = null;
-      for(let pId in room.players) {
+      for (let pId in room.players) {
         room.players[pId].score = 0;
         room.players[pId].latestPoints = 0;
         room.players[pId].currentGuess = null;
@@ -359,6 +359,10 @@ io.on('connection', (socket) => {
     }
     emitActiveRooms();
   });
+});
+
+app.get('/status', (req, res) => {
+  res.json({ status: 'ok' });
 });
 
 server.listen(PORT, () => {

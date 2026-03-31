@@ -1,112 +1,178 @@
 import React, { useState } from 'react';
 
-function Lobby({ onJoin, activeRooms = [] }) {
-  const [username, setUsername] = useState('');
+function Lobby({ onJoin, activeRooms = [], defaultName = '', userPicture = null, isGuest = false }) {
+  const [username, setUsername] = useState(defaultName);
   const [roomId, setRoomId] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (username.trim() && roomId.trim()) {
-      onJoin(roomId.trim(), username.trim());
+      onJoin(roomId.trim().toUpperCase(), username.trim());
     }
   };
 
+  const handleRoomClick = (room) => {
+    if (room.state !== 'LOBBY') return; // Don't auto-join in-progress games
+    setRoomId(room.roomId);
+    if (username.trim()) {
+      onJoin(room.roomId, username.trim());
+    }
+  };
+
+  const lobbyRooms = activeRooms.filter(r => r.state === 'LOBBY');
+  const inProgressRooms = activeRooms.filter(r => r.state !== 'LOBBY');
+
   return (
-    <div className="lobby-card" style={{ 
-        backgroundColor: 'rgba(10, 10, 10, 0.85)', 
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255, 255, 255, 0.1)',
-        boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
-        color: '#fff', 
-        alignItems: 'center', 
-        justifyContent: 'center', 
-        padding: '60px 40px',
-        borderRadius: '24px',
-        width: '90vw',
-        maxWidth: '450px',
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      width: '100%',
+      maxWidth: '440px',
+      gap: '16px',
+      padding: '24px 16px',
+      animation: 'lobbyEntry 0.5s cubic-bezier(0.4,0,0.2,1)',
+    }}>
+
+      {/* Main Card */}
+      <div style={{
+        backgroundColor: 'rgba(14, 14, 14, 0.9)',
+        backdropFilter: 'blur(24px)',
+        WebkitBackdropFilter: 'blur(24px)',
+        border: '1px solid rgba(255, 255, 255, 0.09)',
+        boxShadow: '0 32px 64px -16px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)',
+        color: '#fff',
+        padding: '48px 40px 40px',
+        borderRadius: '28px',
+        width: '100%',
         display: 'flex',
         flexDirection: 'column',
+        alignItems: 'center',
         position: 'relative',
-        overflow: 'hidden'
+        overflow: 'hidden',
       }}>
-      
-      {/* Decorative Glow */}
-      <div style={{ position: 'absolute', top: -100, left: '50%', transform: 'translateX(-50%)', width: '200px', height: '200px', background: 'rgba(255,255,255,0.1)', filter: 'blur(60px)', borderRadius: '50%', pointerEvents: 'none' }} />
 
-      <h1 style={{ 
-        fontSize: '4.5rem', fontWeight: 900, marginBottom: '40px', 
-        letterSpacing: '-3px',
-        background: 'linear-gradient(180deg, #ffffff 0%, #888888 100%)',
-        WebkitBackgroundClip: 'text',
-        WebkitTextFillColor: 'transparent',
-        zIndex: 1
-      }}>dialed</h1>
-      
-      <form className="lobby-form" onSubmit={handleSubmit} style={{ zIndex: 1, width: '100%' }}>
-        <input
-          type="text"
-          className="flat-input"
-          placeholder="Name"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          required
-          maxLength={15}
-        />
-        <input
-          type="text"
-          className="flat-input"
-          placeholder="Room Code"
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          required
-          maxLength={10}
-          style={{ textTransform: 'uppercase' }}
-        />
-        <button type="submit" className="btn-floating" style={{ 
-            position: 'relative', bottom: 'auto', right: 'auto', margin: '32px auto 0',
-            boxShadow: '0 10px 25px rgba(255,255,255,0.2)',
-            transform: 'scale(1.1)'
-          }} disabled={!username.trim() || !roomId.trim()}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="black" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-                <polyline points="12 5 19 12 12 19"></polyline>
-          </svg>
-        </button>
-      </form>
+        {/* Top glow accent */}
+        <div style={{
+          position: 'absolute', top: -80, left: '50%', transform: 'translateX(-50%)',
+          width: '300px', height: '160px',
+          background: 'radial-gradient(ellipse, rgba(16,185,129,0.12) 0%, transparent 70%)',
+          pointerEvents: 'none',
+        }} />
+
+        {/* Logo */}
+        <h1 style={{
+          fontSize: '4rem', fontWeight: 900, marginBottom: '8px',
+          letterSpacing: '-3px',
+          background: 'linear-gradient(160deg, #ffffff 0%, rgba(255,255,255,0.55) 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          zIndex: 1,
+          lineHeight: 1,
+        }}>dialed</h1>
+
+        <p style={{ fontSize: '0.8rem', opacity: 0.35, marginBottom: '36px', letterSpacing: '2px', textTransform: 'uppercase', zIndex: 1 }}>
+          Color Memory Game
+        </p>
+
+        <form className="lobby-form" onSubmit={handleSubmit} style={{ zIndex: 1, width: '100%' }}>
+          {/* Identity card — always read-only for both Google and Guest */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '12px',
+            padding: '10px 16px', borderRadius: '12px',
+            background: 'rgba(255,255,255,0.05)',
+            border: '1px solid rgba(255,255,255,0.08)',
+          }}>
+            {userPicture && (
+              <img src={userPicture} alt={username} referrerPolicy="no-referrer"
+                style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} />
+            )}
+            <div>
+              <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.9rem' }}>{username}</div>
+              <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.7rem' }}>
+                {isGuest ? 'Playing as Guest' : 'Signed in with Google'}
+              </div>
+            </div>
+          </div>
+
+          <input
+            type="text"
+            className="flat-input"
+            placeholder="Room code"
+            value={roomId}
+            onChange={(e) => setRoomId(e.target.value.toUpperCase())}
+            required
+            maxLength={10}
+          />
+          <button
+            type="submit"
+            className="btn-action btn-action-primary"
+            style={{ marginTop: '8px', opacity: !roomId.trim() ? 0.4 : 1 }}
+            disabled={!roomId.trim()}
+          >
+            Join Room →
+          </button>
+        </form>
+      </div>
 
       {/* Server Browser */}
       {activeRooms.length > 0 && (
-        <div style={{ marginTop: '48px', width: '100%', maxWidth: '400px', textAlign: 'left' }}>
-          <h3 style={{ fontSize: '1.2rem', opacity: 0.7, marginBottom: '16px' }}>Public Lobbies</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '200px', overflowY: 'auto' }}>
-            {activeRooms.map(r => (
-              <div 
+        <div style={{
+          backgroundColor: 'rgba(14,14,14,0.8)',
+          backdropFilter: 'blur(24px)',
+          WebkitBackdropFilter: 'blur(24px)',
+          border: '1px solid rgba(255,255,255,0.07)',
+          borderRadius: '20px',
+          padding: '20px 24px',
+          width: '100%',
+        }}>
+          <div style={{ fontSize: '0.7rem', letterSpacing: '2px', opacity: 0.4, textTransform: 'uppercase', color: '#fff', marginBottom: '14px' }}>
+            Live Rooms
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {lobbyRooms.map(r => (
+              <div
                 key={r.roomId}
-                onClick={() => {
-                  setRoomId(r.roomId);
-                  if (username.trim()) onJoin(r.roomId, username.trim());
-                }}
-                style={{ 
-                  background: 'rgba(255,255,255,0.05)', padding: '12px 16px', borderRadius: '8px',
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  cursor: 'pointer', transition: 'background 0.2s'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.1)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
+                className="room-row"
+                onClick={() => handleRoomClick(r)}
               >
-                <div>
-                  <div style={{ fontWeight: 'bold' }}>{r.roomId}</div>
-                  <div style={{ fontSize: '0.8rem', opacity: 0.6 }}>{r.state === 'LOBBY' ? 'Waiting' : 'In Progress'}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div className="room-status-dot" />
+                  <div>
+                    <div style={{ color: '#fff', fontWeight: 700, fontSize: '0.95rem' }}>{r.roomId}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.4)', fontSize: '0.75rem' }}>
+                      Waiting for players
+                    </div>
+                  </div>
                 </div>
-                <div style={{ opacity: 0.8 }}>
-                  {r.playerCount} User{r.playerCount !== 1 ? 's' : ''}
+                <div style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.85rem', fontWeight: 600 }}>
+                  {r.playerCount} / ∞
+                </div>
+              </div>
+            ))}
+
+            {inProgressRooms.map(r => (
+              <div key={r.roomId} className="room-row room-row-in-progress">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'rgba(255,255,255,0.2)' }} />
+                  <div>
+                    <div style={{ color: 'rgba(255,255,255,0.6)', fontWeight: 700, fontSize: '0.95rem' }}>{r.roomId}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.25)', fontSize: '0.75rem' }}>In progress</div>
+                  </div>
+                </div>
+                <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: '0.85rem', fontWeight: 600 }}>
+                  {r.playerCount} playing
                 </div>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      <div style={{ color: 'rgba(255,255,255,0.15)', fontSize: '0.7rem', letterSpacing: '1px' }}>
+        DIALED · COLOR MEMORY v1.0
+      </div>
     </div>
   );
 }

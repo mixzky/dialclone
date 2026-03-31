@@ -16,8 +16,31 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 3001;
 
-// memory state
+// Memory state
 const rooms = {};
+const socketRateLimits = {}; // { socketId: { lastChat, joinCount } }
+
+// --- Security helpers ---
+const sanitizeText = (str = '', maxLen = 200) =>
+  String(str).replace(/[<>&"']/g, '').trim().slice(0, maxLen);
+
+const sanitizeRoomId = (id = '') =>
+  String(id).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10);
+
+const clampHSL = (h, s, l) => ({
+  h: Math.max(0, Math.min(360, Math.round(Number(h) || 0))),
+  s: Math.max(0, Math.min(100, Math.round(Number(s) || 0))),
+  l: Math.max(0, Math.min(100, Math.round(Number(l) || 0))),
+});
+
+const canChat = (socketId) => {
+  const now = Date.now();
+  if (!socketRateLimits[socketId]) socketRateLimits[socketId] = {};
+  const last = socketRateLimits[socketId].lastChat || 0;
+  if (now - last < 500) return false; // 500ms cooldown
+  socketRateLimits[socketId].lastChat = now;
+  return true;
+};
 
 const GAME_SETTINGS = {
   MAX_ROUNDS: 5,
@@ -85,19 +108,22 @@ function getPublicRoomState(roomId) {
     players: Object.values(room.players).map(p => ({
       id: p.id,
       name: p.name,
+      picture: p.picture || null,
       score: p.score,
       latestPoints: p.latestPoints || 0,
       isReady: p.isReady,
       hasGuessed: !!p.currentGuess,
-      lastGuess: (room.state === 'ROUND_RESULT' || room.state === 'END_GAME') ? p.currentGuess : null
+      lastGuess: (room.state === 'ROUND_RESULT' || room.state === 'END_GAME') ? p.currentGuess : null,
+      roundHistory: p.roundHistory || [],
     })),
     host: room.host,
     targetColor: (room.state !== 'LOBBY') ? room.targetColor : null,
     round: room.round,
     maxRounds: room.MAX_ROUNDS,
-    timeRemaining: room.timeRemaining
+    timeRemaining: room.timeRemaining,
   };
 }
+
 
 function startTimer(roomId, currentPhase, durationSec, onEnd) {
   const room = rooms[roomId];
@@ -169,7 +195,18 @@ function startResultPhase(roomId) {
   if(!room) return;
 
   if (room.timer) clearInterval(room.timer);
-  
+
+  // Auto-record a missed entry for players who didn't submit
+  for (const pId in room.players) {
+    const p = room.players[pId];
+    if (!p.currentGuess) {
+      // Player missed — record 0 pts with their last known guess (or default)
+      const missedGuess = p.lastGuess || { h: 180, s: 50, l: 50 };
+      if (!p.roundHistory) p.roundHistory = [];
+      p.roundHistory.push({ target: room.targetColor, guess: missedGuess, pts: 0, missed: true });
+    }
+  }
+
   room.state = 'ROUND_RESULT';
   
   emitRoomState(roomId);
@@ -195,12 +232,17 @@ io.on('connection', (socket) => {
   console.log(`User connected: ${socket.id}`);
   socket.emit('active_rooms', getActiveRooms());
 
-  socket.on('join_room', ({ roomId, username }) => {
-    socket.join(roomId);
+  socket.on('join_room', ({ roomId, username, picture }) => {
+    const safeRoom = sanitizeRoomId(roomId);
+    const safeName = sanitizeText(username, 20) || `Player_${socket.id.slice(0, 4)}`;
+    const safePic = typeof picture === 'string' && picture.startsWith('http') ? picture
+      : typeof picture === 'string' && picture.startsWith('data:image') ? picture : null;
 
-    if (!rooms[roomId]) {
-      rooms[roomId] = {
-        roomId,
+    if (!safeRoom) return;
+    socket.join(safeRoom);
+    if (!rooms[safeRoom]) {
+      rooms[safeRoom] = {
+        roomId: safeRoom,
         state: 'LOBBY',
         players: {},
         targetColor: null,
@@ -208,21 +250,22 @@ io.on('connection', (socket) => {
         MAX_ROUNDS: GAME_SETTINGS.MAX_ROUNDS,
         host: socket.id,
         timer: null,
-        timeRemaining: 0
+        timeRemaining: 0,
       };
     }
 
-    const isHost = rooms[roomId].host === socket.id;
-    rooms[roomId].players[socket.id] = {
+    const isHost = rooms[safeRoom].host === socket.id;
+    rooms[safeRoom].players[socket.id] = {
       id: socket.id,
-      name: username || `Player_${socket.id.substring(0, 4)}`,
+      name: safeName,
+      picture: safePic,
       score: 0,
       latestPoints: 0,
       isReady: isHost,
       currentGuess: null
     };
 
-    emitRoomState(roomId);
+    emitRoomState(safeRoom);
     emitActiveRooms();
   });
 
@@ -252,6 +295,7 @@ io.on('connection', (socket) => {
       for(let pId in room.players) {
         room.players[pId].score = 0;
         room.players[pId].latestPoints = 0;
+        room.players[pId].roundHistory = [];
       }
       startMemorizePhase(roomId);
       emitActiveRooms();
@@ -259,20 +303,21 @@ io.on('connection', (socket) => {
   });
 
   socket.on('submit_guess', ({ roomId, h, s, l }) => {
-    const room = rooms[roomId];
+    const safeRoom = sanitizeRoomId(roomId);
+    const room = rooms[safeRoom];
     if (room && room.state === 'GUESS' && room.players[socket.id]) {
       const p = room.players[socket.id];
       if (!p.currentGuess) {
-        p.currentGuess = { h, s, l };
-        const pts = calculateScore(room.targetColor, p.currentGuess);
+        const guess = clampHSL(h, s, l);
+        p.currentGuess = guess;
+        p.lastGuess = guess;
+        const pts = calculateScore(room.targetColor, guess);
         p.latestPoints = pts;
         p.score += pts;
-        
-        emitRoomState(roomId);
-
-        if (checkAllGuessed(roomId)) {
-          startResultPhase(roomId);
-        }
+        if (!p.roundHistory) p.roundHistory = [];
+        p.roundHistory.push({ target: room.targetColor, guess, pts });
+        emitRoomState(safeRoom);
+        if (checkAllGuessed(safeRoom)) startResultPhase(safeRoom);
       }
     }
   });
@@ -287,6 +332,7 @@ io.on('connection', (socket) => {
         room.players[pId].score = 0;
         room.players[pId].latestPoints = 0;
         room.players[pId].currentGuess = null;
+        room.players[pId].roundHistory = [];
         room.players[pId].isReady = (pId === room.host);
       }
       emitRoomState(roomId);
@@ -295,6 +341,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
+    delete socketRateLimits[socket.id];
     for (const roomId in rooms) {
       const room = rooms[roomId];
       if (room.players[socket.id]) {
